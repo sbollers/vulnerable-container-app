@@ -1,0 +1,60 @@
+# DEMO ONLY - intentionally insecure Kubernetes manifest.
+# Trips IaC scanners (Trivy / Template Analyzer) in Microsoft Security DevOps:
+#   - privileged container, runs as root, allows privilege escalation
+#   - hostPath mount of node root, host namespaces
+#   - no resource limits, no read-only root fs
+#   - image pulled from a vulnerable registry tag
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vulnerable-container-app
+  namespace: default
+  labels:
+    app: vulnerable-container-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vulnerable-container-app
+  template:
+    metadata:
+      labels:
+        app: vulnerable-container-app
+    spec:
+      hostNetwork: true
+      hostPID: true
+      automountServiceAccountToken: true
+      containers:
+        - name: app
+          image: regdefdemo2026sc.azurecr.io/web-dvwa:demo
+          securityContext:
+            privileged: true
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: true
+            readOnlyRootFilesystem: false
+            capabilities:
+              add: ["SYS_ADMIN", "NET_RAW"]
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: host-root
+              mountPath: /host
+      volumes:
+        - name: host-root
+          hostPath:
+            path: /
+            type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vulnerable-container-app
+  namespace: default
+spec:
+  type: LoadBalancer
+  selector:
+    app: vulnerable-container-app
+  ports:
+    - port: 80
+      targetPort: 80
