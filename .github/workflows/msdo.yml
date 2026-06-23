@@ -43,14 +43,10 @@ jobs:
       - name: Build vulnerable image
         run: docker build -t vulnerable-container-app:ci .
 
-      - name: Trivy image vulnerability scan (SARIF)
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          image-ref: vulnerable-container-app:ci
-          format: sarif
-          output: trivy-image.sarif
-          severity: CRITICAL,HIGH
-          ignore-unfixed: false
+      - name: Install Trivy and scan image (SARIF)
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          trivy image --format sarif --output trivy-image.sarif --severity CRITICAL,HIGH --ignore-unfixed=false vulnerable-container-app:ci || true
 
       - name: Upload Trivy results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
