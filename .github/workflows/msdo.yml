@@ -43,6 +43,21 @@ jobs:
       - name: Build vulnerable image
         run: docker build -t vulnerable-container-app:ci .
 
+      # Microsoft Defender for Cloud CLI (CI/CD integration) — scans the image
+      # built in the pipeline and publishes findings to Defender for Cloud so
+      # they surface in Cloud Security Explorer and Attack path analysis.
+      - name: Download Defender for Cloud CLI
+        run: |
+          curl -L -o defender "https://aka.ms/defender-cli_linux-x64" && chmod +x defender
+
+      - name: Run Defender for Cloud CLI image scan
+        run: ./defender scan image 'vulnerable-container-app:ci'
+        continue-on-error: true
+        env:
+          DEFENDER_TENANT_ID: ${{ secrets.DEFENDER_CICD_TENANT_ID }}
+          DEFENDER_CLIENT_ID: ${{ secrets.DEFENDER_CICD_CLIENT_ID }}
+          DEFENDER_CLIENT_SECRET: ${{ secrets.DEFENDER_CICD_CLIENT_SECRET }}
+
       - name: Install Trivy and scan image (SARIF)
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
