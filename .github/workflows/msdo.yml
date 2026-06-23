@@ -40,18 +40,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build vulnerable image
-        run: docker build -t vulnerable-container-app:ci .
+      - name: Log in to Azure Container Registry
+        run: echo "${{ secrets.ACR_PASSWORD }}" | docker login "${{ secrets.ACR_LOGIN_SERVER }}" -u "${{ secrets.ACR_USERNAME }}" --password-stdin
 
-      # Microsoft Defender for Cloud CLI (CI/CD integration) — scans the image
-      # built in the pipeline and publishes findings to Defender for Cloud so
-      # they surface in Cloud Security Explorer and Attack path analysis.
+      - name: Build and push vulnerable image to ACR
+        run: |
+          IMAGE="${{ secrets.ACR_LOGIN_SERVER }}/cicd-vuln-app:${{ github.sha }}"
+          docker build -t "$IMAGE" -t "${{ secrets.ACR_LOGIN_SERVER }}/cicd-vuln-app:latest" .
+          docker push "$IMAGE"
+          docker push "${{ secrets.ACR_LOGIN_SERVER }}/cicd-vuln-app:latest"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      # Microsoft Defender for Cloud CLI (CI/CD integration) — scans the image the
+      # pipeline pushed to ACR and reports it to Defender for Cloud. This creates
+      # the "CI/CD pipeline -> pushes -> container image (with vulnerabilities)"
+      # relationship in Cloud Security Explorer and feeds Attack path analysis.
       - name: Download Defender for Cloud CLI
         run: |
           curl -L -o defender "https://aka.ms/defender-cli_linux-x64" && chmod +x defender
 
-      - name: Run Defender for Cloud CLI image scan
-        run: ./defender scan image 'vulnerable-container-app:ci'
+      - name: Run Defender for Cloud CLI image scan (pushed ACR image)
+        run: ./defender scan image "$IMAGE"
         continue-on-error: true
         env:
           DEFENDER_TENANT_ID: ${{ secrets.DEFENDER_CICD_TENANT_ID }}
@@ -61,7 +70,7 @@ jobs:
       - name: Install Trivy and scan image (SARIF)
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-          trivy image --format sarif --output trivy-image.sarif --severity CRITICAL,HIGH --ignore-unfixed=false vulnerable-container-app:ci || true
+          trivy image --format sarif --output trivy-image.sarif --severity CRITICAL,HIGH --ignore-unfixed=false "$IMAGE" || true
 
       - name: Upload Trivy results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
